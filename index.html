@@ -14,33 +14,223 @@
             align-items: center;
             font-family: Arial, sans-serif;
             color: #000000;
-            transition: background-color 0.5s ease;
+            overflow: hidden;
+            position: relative;
+            isolation: isolate;
+            transition: background-color 0.7s ease;
+        }
+        #language-orbit {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+        main {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 24px;
+            padding: 32px 24px;
+            text-align: center;
+            text-shadow: 0 2px 12px rgba(255, 255, 255, 0.4);
         }
         h1 {
-            font-size: 40pt;
-            margin-bottom: 20px;
+            max-width: 12ch;
+            margin: 0;
+            font-size: 3.5rem;
+            line-height: 1.05;
             font-family: 'Comic Sans MS', cursive;
         }
         button {
-            padding: 15px 30px;
-            font-size: 1em;
+            min-height: 48px;
+            padding: 12px 26px;
+            font-size: 1rem;
+            font-weight: bold;
             cursor: pointer;
             border: none;
             border-radius: 5px;
             background-color: #007BFF;
             color: white;
-            transition: background-color 0.3s ease;
+            box-shadow: 0 6px 16px rgba(0, 64, 137, 0.28);
+            transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
         }
         button:hover {
             background-color: #0056b3;
+            box-shadow: 0 8px 20px rgba(0, 64, 137, 0.36);
+        }
+        button:active {
+            transform: scale(0.94);
+        }
+        button:focus-visible {
+            outline: 3px solid #ffffff;
+            outline-offset: 4px;
+        }
+        @media (max-width: 600px) {
+            main {
+                gap: 20px;
+                padding: 24px 20px;
+            }
+            h1 {
+                font-size: 2.5rem;
+            }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            button {
+                transition: none;
+            }
         }
     </style>
 </head>
 <body>
-    <h1>Hello World</h1>
-    <button onclick="changeBackgroundColor()">Click Me</button>
+    <canvas id="language-orbit" aria-hidden="true"></canvas>
+    <main>
+        <h1 id="main-greeting" aria-live="polite">Hello World</h1>
+        <button id="change-button" onclick="changeBackgroundColor()">Click Me</button>
+    </main>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
+        const greetings = [
+            "Hello World", "Hola Mundo", "Bonjour le monde", "Hallo Welt",
+            "Ciao mondo", "Olá Mundo", "こんにちは世界", "안녕하세요 세계",
+            "你好，世界", "Привет, мир", "مرحبا بالعالم", "नमस्ते दुनिया",
+            "Hej världen", "Merhaba Dünya", "שלום עולם", "Xin chào thế giới",
+            "Hallo wereld", "Witaj świecie", "Γειά σου κόσμε", "สวัสดีชาวโลก",
+            "Halo Dunia", "Hujambo, Dunia", "Salut, lume", "Ahoj světe",
+            "Hej verden", "Hei maailma", "Helló világ", "Привіт, світе",
+            "হ্যালো বিশ্ব", "வணக்கம் உலகம்", "హలో ప్రపంచం", "ഹലോ ലോകമേ",
+            "გამარჯობა მსოფლიო", "Բարեւ աշխարհ", "سلام دنیا", "ہیلو دنیا",
+            "Kumusta Mundo", "Kia ora, ao", "Dia duit, a dhomhan", "Saluton, mondo",
+            "Hola món", "Kaixo mundua"
+        ];
+        let greetingIndex = 0;
+        const languageOrbit = document.getElementById("language-orbit");
+        const mainGreeting = document.getElementById("main-greeting");
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const idleVelocity = 0.012;
+        let orbitRotation = 0;
+        let orbitVelocity = idleVelocity;
+        let lastFrameTime = performance.now();
+        let orbitRenderer;
+        let orbitScene;
+        let orbitCamera;
+        let orbitGroup;
+        const orbitMaterials = [];
+        const orbitSprites = [];
+
+        function createGreetingSprite(text) {
+            const labelCanvas = document.createElement("canvas");
+            const context = labelCanvas.getContext("2d");
+            const fontSize = 40;
+            const padding = 28;
+
+            context.font = `600 ${fontSize}px Arial`;
+            labelCanvas.width = Math.ceil(context.measureText(text).width + (padding * 2));
+            labelCanvas.height = fontSize + (padding * 2);
+            context.font = `600 ${fontSize}px Arial`;
+            context.fillStyle = "#ffffff";
+            context.textBaseline = "middle";
+            context.fillText(text, padding, labelCanvas.height / 2);
+
+            const texture = new THREE.CanvasTexture(labelCanvas);
+            const material = new THREE.SpriteMaterial({
+                map: texture,
+                transparent: true,
+                opacity: 0.18,
+                depthWrite: false
+            });
+            const sprite = new THREE.Sprite(material);
+            sprite.userData.baseWidth = (labelCanvas.width / labelCanvas.height) * 15;
+            sprite.userData.baseHeight = 15;
+            sprite.scale.set(sprite.userData.baseWidth, sprite.userData.baseHeight, 1);
+            orbitMaterials.push(material);
+            return sprite;
+        }
+
+        function setupOrbit() {
+            orbitRenderer = new THREE.WebGLRenderer({ canvas: languageOrbit, alpha: true, antialias: true });
+            orbitRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            orbitScene = new THREE.Scene();
+            orbitCamera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 1000);
+            orbitCamera.position.set(0, 0, 560);
+            orbitGroup = new THREE.Group();
+            orbitGroup.rotation.x = -0.16;
+            orbitScene.add(orbitGroup);
+
+            const latitudes = [-0.88, -0.43, 0.02, 0.47, 0.9];
+            const labelsPerBand = Math.ceil(greetings.length / latitudes.length);
+
+            greetings.forEach((greeting, index) => {
+                const bandIndex = index % latitudes.length;
+                const latitude = latitudes[bandIndex];
+                const longitude = ((Math.floor(index / latitudes.length) / labelsPerBand) * Math.PI * 2)
+                    + (bandIndex * 0.42);
+                const radiusAtLatitude = Math.cos(latitude) * 175;
+                const sprite = createGreetingSprite(greeting);
+                sprite.position.set(
+                    Math.cos(longitude) * radiusAtLatitude,
+                    Math.sin(latitude) * 175,
+                    Math.sin(longitude) * radiusAtLatitude
+                );
+                orbitGroup.add(sprite);
+                orbitSprites.push(sprite);
+            });
+            resizeOrbit();
+        }
+
+        function resizeOrbit() {
+            orbitCamera.aspect = window.innerWidth / window.innerHeight;
+            orbitCamera.updateProjectionMatrix();
+            orbitRenderer.setSize(window.innerWidth, window.innerHeight, false);
+        }
+
+        function updateOrbitColor(color) {
+            orbitMaterials.forEach((material) => material.color.set(color));
+        }
+
+        function updateOrbitDepth() {
+            const rotation = THREE.MathUtils.degToRad(orbitRotation);
+
+            orbitSprites.forEach((sprite) => {
+                const depth = (sprite.position.x * Math.sin(rotation)) + (sprite.position.z * Math.cos(rotation));
+                const depthFactor = THREE.MathUtils.clamp((depth + 175) / 350, 0, 1);
+                const scaleFactor = 0.78 + (depthFactor * 0.38);
+
+                sprite.material.opacity = 0.06 + (depthFactor * 0.16);
+                sprite.scale.set(
+                    sprite.userData.baseWidth * scaleFactor,
+                    sprite.userData.baseHeight * scaleFactor,
+                    1
+                );
+            });
+        }
+
+        function animateOrbit(frameTime) {
+            const elapsed = Math.min(frameTime - lastFrameTime, 64);
+            lastFrameTime = frameTime;
+            orbitVelocity = idleVelocity + ((orbitVelocity - idleVelocity) * Math.exp(-elapsed / 1100));
+            orbitRotation += orbitVelocity * elapsed;
+            orbitGroup.rotation.y = THREE.MathUtils.degToRad(orbitRotation);
+            orbitGroup.position.y = Math.sin(frameTime / 2600) * 8;
+            updateOrbitDepth();
+            orbitRenderer.render(orbitScene, orbitCamera);
+            window.requestAnimationFrame(animateOrbit);
+        }
+
+        setupOrbit();
+        updateOrbitColor(document.body.style.color || "#000000");
+        updateOrbitDepth();
+        window.addEventListener("resize", resizeOrbit);
+        if (!reducedMotion) {
+            window.requestAnimationFrame(animateOrbit);
+        } else {
+            orbitRenderer.render(orbitScene, orbitCamera);
+        }
+
         function getRandomColor() {
             const r = Math.floor(Math.random() * 256);
             const g = Math.floor(Math.random() * 256);
@@ -61,7 +251,13 @@
         }
 
         function getReadableTextColor(backgroundColor) {
-            const backgroundLuminance = getRelativeLuminance(backgroundColor);
+            const opacity = backgroundColor.a / 255;
+            const displayedBackground = {
+                r: Math.round((backgroundColor.r * opacity) + (255 * (1 - opacity))),
+                g: Math.round((backgroundColor.g * opacity) + (255 * (1 - opacity))),
+                b: Math.round((backgroundColor.b * opacity) + (255 * (1 - opacity)))
+            };
+            const backgroundLuminance = getRelativeLuminance(displayedBackground);
 
             for (let attempt = 0; attempt < 100; attempt += 1) {
                 const textColor = getRandomColor();
@@ -80,8 +276,14 @@
         function changeBackgroundColor() {
             const backgroundColor = getRandomColor();
 
+            greetingIndex = (greetingIndex + 1) % greetings.length;
+            mainGreeting.textContent = greetings[greetingIndex];
+
             document.body.style.backgroundColor = `rgba(${backgroundColor.r}, ${backgroundColor.g}, ${backgroundColor.b}, ${backgroundColor.a / 255})`;
-            document.body.style.color = getReadableTextColor(backgroundColor);
+            const textColor = getReadableTextColor(backgroundColor);
+            document.body.style.color = textColor;
+            updateOrbitColor(textColor);
+            orbitVelocity = Math.min(0.5, orbitVelocity + 0.2);
         }
     </script>
 </body>
