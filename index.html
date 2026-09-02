@@ -45,7 +45,8 @@
             const r = Math.floor(Math.random() * 256);
             const g = Math.floor(Math.random() * 256);
             const b = Math.floor(Math.random() * 256);
-            return { r, g, b };
+            const a = Math.floor(Math.random() * 256);
+            return { r, g, b, a};
         }
 
         function getRelativeLuminance({ r, g, b }) {
@@ -79,7 +80,7 @@
         function changeBackgroundColor() {
             const backgroundColor = getRandomColor();
 
-            document.body.style.backgroundColor = `rgb(${backgroundColor.r}, ${backgroundColor.g}, ${backgroundColor.b})`;
+            document.body.style.backgroundColor = `rgba(${backgroundColor.r}, ${backgroundColor.g}, ${backgroundColor.b}, ${backgroundColor.a / 255})`;
             document.body.style.color = getReadableTextColor(backgroundColor);
         }
     </script>
