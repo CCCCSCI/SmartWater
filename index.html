@@ -120,7 +120,8 @@
         let orbitCamera;
         let orbitGroup;
         const orbitMaterials = [];
-        const orbitSprites = [];
+        const frameInterval = 1000 / 30;
+        let lastRenderTime = 0;
 
         function createGreetingSprite(text) {
             const labelCanvas = document.createElement("canvas");
@@ -140,20 +141,23 @@
             const material = new THREE.SpriteMaterial({
                 map: texture,
                 transparent: true,
-                opacity: 0.18,
+                opacity: 0.14,
                 depthWrite: false
             });
             const sprite = new THREE.Sprite(material);
-            sprite.userData.baseWidth = (labelCanvas.width / labelCanvas.height) * 15;
-            sprite.userData.baseHeight = 15;
-            sprite.scale.set(sprite.userData.baseWidth, sprite.userData.baseHeight, 1);
+            sprite.scale.set((labelCanvas.width / labelCanvas.height) * 15, 15, 1);
             orbitMaterials.push(material);
             return sprite;
         }
 
         function setupOrbit() {
-            orbitRenderer = new THREE.WebGLRenderer({ canvas: languageOrbit, alpha: true, antialias: true });
-            orbitRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            orbitRenderer = new THREE.WebGLRenderer({
+                canvas: languageOrbit,
+                alpha: true,
+                antialias: false,
+                powerPreference: "high-performance"
+            });
+            orbitRenderer.setPixelRatio(1);
             orbitScene = new THREE.Scene();
             orbitCamera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 1000);
             orbitCamera.position.set(0, 0, 560);
@@ -177,7 +181,6 @@
                     Math.sin(longitude) * radiusAtLatitude
                 );
                 orbitGroup.add(sprite);
-                orbitSprites.push(sprite);
             });
             resizeOrbit();
         }
@@ -192,38 +195,29 @@
             orbitMaterials.forEach((material) => material.color.set(color));
         }
 
-        function updateOrbitDepth() {
-            const rotation = THREE.MathUtils.degToRad(orbitRotation);
-
-            orbitSprites.forEach((sprite) => {
-                const depth = (sprite.position.x * Math.sin(rotation)) + (sprite.position.z * Math.cos(rotation));
-                const depthFactor = THREE.MathUtils.clamp((depth + 175) / 350, 0, 1);
-                const scaleFactor = 0.78 + (depthFactor * 0.38);
-
-                sprite.material.opacity = 0.06 + (depthFactor * 0.16);
-                sprite.scale.set(
-                    sprite.userData.baseWidth * scaleFactor,
-                    sprite.userData.baseHeight * scaleFactor,
-                    1
-                );
-            });
-        }
-
         function animateOrbit(frameTime) {
+            if (document.hidden) {
+                lastFrameTime = frameTime;
+                window.requestAnimationFrame(animateOrbit);
+                return;
+            }
+
             const elapsed = Math.min(frameTime - lastFrameTime, 64);
             lastFrameTime = frameTime;
             orbitVelocity = idleVelocity + ((orbitVelocity - idleVelocity) * Math.exp(-elapsed / 1100));
             orbitRotation += orbitVelocity * elapsed;
             orbitGroup.rotation.y = THREE.MathUtils.degToRad(orbitRotation);
             orbitGroup.position.y = Math.sin(frameTime / 2600) * 8;
-            updateOrbitDepth();
-            orbitRenderer.render(orbitScene, orbitCamera);
+
+            if (frameTime - lastRenderTime >= frameInterval) {
+                lastRenderTime = frameTime;
+                orbitRenderer.render(orbitScene, orbitCamera);
+            }
             window.requestAnimationFrame(animateOrbit);
         }
 
         setupOrbit();
         updateOrbitColor(document.body.style.color || "#000000");
-        updateOrbitDepth();
         window.addEventListener("resize", resizeOrbit);
         if (!reducedMotion) {
             window.requestAnimationFrame(animateOrbit);
